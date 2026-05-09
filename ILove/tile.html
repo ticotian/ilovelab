@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TILING STUDIO | STEP 2</title>
+    <style>
+        body { background: #fff; color: #000; margin: 0; font-family: 'Helvetica', sans-serif; display: flex; height: 100vh; overflow: hidden; }
+        
+        .sidebar { width: 350px; border-right: 1px solid #000; padding: 40px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; z-index: 10; background: #fff; }
+        h1 { font-size: 16px; letter-spacing: 3px; margin: 0 0 10px 0; border-bottom: 1px solid #000; padding-bottom: 15px; font-weight: 900; }
+        
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 10px; font-weight: bold; letter-spacing: 1px; color: #666; }
+        
+        select, input[type="color"] { border: 1px solid #000; padding: 12px; font-size: 14px; background: transparent; outline: none; border-radius: 0; }
+        
+        input[type="range"] { -webkit-appearance: none; width: 100%; height: 1px; background: #000; outline: none; margin: 15px 0; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #000; cursor: pointer; border-radius: 50%; border: 1px solid #000; }
+
+        .preview-area { flex: 1; display: flex; align-items: center; justify-content: center; background: #f0f0f0; padding: 40px; overflow: hidden; }
+        .canvas-container { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+        
+        /* 预览缩放 */
+        canvas { background-color: white; box-shadow: 0 0 40px rgba(0,0,0,0.1); transform-origin: center; transition: transform 0.1s ease; }
+
+        .btn-group { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+        .btn { padding: 18px; text-decoration: none; text-align: center; font-weight: bold; font-size: 12px; letter-spacing: 1px; cursor: pointer; border: 1px solid #000; transition: 0.2s; }
+        .btn-black { background: #000; color: #fff; }
+        .btn-white { background: #fff; color: #000; }
+        .btn:hover { opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <h1>TILING SYSTEM</h1>
+    
+    <div class="control-group">
+        <label>PAGE SIZE</label>
+        <select id="pageSize">
+            <option value="1200x1200">SQUARE (1200px)</option>
+            <option value="1920x1080">DESKTOP (16:9)</option>
+            <option value="1080x1920">PHONE (9:16)</option>
+            <option value="2480x3508">A4 PORTRAIT</option>
+            <option value="3508x2480">A4 LANDSCAPE</option>
+            <option value="3508x4961">A3 PORTRAIT</option>
+            <option value="4961x3508">A3 LANDSCAPE</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>PATTERN MODE</label>
+        <select id="mode">
+            <option value="grid">GRID</option>
+            <option value="offset">OFFSET</option>
+            <option value="single">SINGLE UNIT</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>BACKGROUND COLOR</label>
+        <input type="color" id="bgColor" value="#ffffff">
+    </div>
+
+    <div class="control-group">
+        <label id="scaleLabel">UNIT SIZE / SCALE</label>
+        <input type="range" id="scale" min="0.5" max="15" value="4" step="0.1">
+    </div>
+
+    <div class="control-group" id="spacingGroup">
+        <label>SPACING</label>
+        <input type="range" id="spacing" min="1.0" max="3.0" value="1.4" step="0.05">
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-black" onclick="download()">EXPORT IMAGE</button>
+        <a href="index.html" class="btn btn-white">BACK TO EDITOR</a>
+    </div>
+</div>
+
+<div class="preview-area">
+    <div class="canvas-container" id="container">
+        <canvas id="tileCanvas" width="1200" height="1200"></canvas>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('tileCanvas');
+    const ctx = canvas.getContext('2d');
+    const unitImg = new Image();
+    const container = document.getElementById('container');
+    
+    const savedData = localStorage.getItem('savedUnit');
+    const aspect = parseFloat(localStorage.getItem('unitAspect')) || 1.0;
+
+    if (savedData) {
+        unitImg.src = savedData;
+        unitImg.onload = () => { draw(); resizeCanvasPreview(); };
+    }
+
+    // 自动缩放预览以适应屏幕
+    function resizeCanvasPreview() {
+        const padding = 60;
+        const availableW = container.clientWidth - padding;
+        const availableH = container.clientHeight - padding;
+        
+        const scaleW = availableW / canvas.width;
+        const scaleH = availableH / canvas.height;
+        const finalScale = Math.min(scaleW, scaleH, 1); 
+        
+        canvas.style.transform = `scale(${finalScale})`;
+    }
+
+    window.addEventListener('resize', resizeCanvasPreview);
+
+    ['bgColor', 'mode', 'scale', 'spacing', 'pageSize'].forEach(id => {
+        document.getElementById(id).addEventListener('input', () => {
+            const mode = document.getElementById('mode').value;
+            // Single 模式下隐藏间距调节，并修改 Scale 的标签提示
+            document.getElementById('spacingGroup').style.display = (mode === 'single') ? 'none' : 'block';
+            document.getElementById('scaleLabel').innerText = (mode === 'single') ? 'UNIT SIZE' : 'UNIT SCALE';
+            draw();
+        });
+    });
+
+    document.getElementById('pageSize').addEventListener('change', (e) => {
+        const [w, h] = e.target.value.split('x').map(Number);
+        canvas.width = w; canvas.height = h;
+        draw();
+        resizeCanvasPreview();
+    });
+
+    function draw() {
+        if (!unitImg.complete) return;
+        const bgColor = document.getElementById('bgColor').value;
+        const mode = document.getElementById('mode').value;
+        const scale = parseFloat(document.getElementById('scale').value);
+        const spacing = parseFloat(document.getElementById('spacing').value);
+
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (mode === 'single') {
+            // SINGLE 模式：大小受 scale 滑块控制
+            // 这里的逻辑是将 scale 反向理解，scale 越小图案越大，或者重新定义
+            // 我们定义：scale 为 1 时，宽度占画布 1/1；scale 为 4 时，宽度占画布 1/4
+            const uW = canvas.width / scale; 
+            const uH = uW / aspect;
+            ctx.drawImage(unitImg, (canvas.width - uW)/2, (canvas.height - uH)/2, uW, uH);
+        } else {
+            // 平铺模式
+            const uW = canvas.width / scale;
+            const uH = uW / aspect;
+            const sX = uW * spacing;
+            const sY = uH * spacing;
+
+            for (let y = -sY; y < canvas.height + sY; y += sY) {
+                for (let x = -sX; x < canvas.width + sX; x += sX) {
+                    let drawX = x;
+                    if (mode === 'offset' && (Math.floor(y / sY) % 2 !== 0)) {
+                        drawX += sX / 2;
+                    }
+                    ctx.drawImage(unitImg, drawX, y, uW, uH);
+                }
+            }
+        }
+    }
+
+    function download() {
+        const link = document.createElement('a');
+        link.download = `DESIGN_EXPORT_${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png', 1.0);
+        link.click();
+    }
+</script>
+</body>
+</html>

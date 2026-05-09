@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>UNIT EDITOR | STEP 1</title>
+    <style>
+        @font-face { 
+            font-family: 'CooperBlack'; 
+            src: url('COOPBL.TTF') format('truetype'); 
+        }
+        @font-face { 
+            font-family: 'AmericanTypewriter'; 
+            src: url('at.ttf') format('truetype'); 
+        }
+
+        body { background: #fff; color: #000; margin: 0; font-family: 'Helvetica', sans-serif; display: flex; height: 100vh; overflow: hidden; }
+        
+        .sidebar { width: 350px; border-right: 1px solid #000; padding: 40px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+        h1 { font-size: 16px; letter-spacing: 3px; margin: 0 0 10px 0; border-bottom: 1px solid #000; padding-bottom: 15px; font-weight: 900; }
+        
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        label { font-size: 10px; font-weight: bold; letter-spacing: 1px; color: #666; }
+        
+        input[type="text"], select { border: 1px solid #000; padding: 12px; font-size: 14px; outline: none; background: transparent; border-radius: 0; }
+        
+        input[type="range"] { -webkit-appearance: none; width: 100%; height: 1px; background: #000; outline: none; margin: 15px 0; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #000; cursor: pointer; border-radius: 50%; border: 1px solid #000; }
+
+        .mode-toggle { display: flex; gap: 1px; background: #000; border: 1px solid #000; }
+        .mode-btn { flex: 1; padding: 10px; background: #fff; color: #000; cursor: pointer; text-align: center; font-size: 11px; font-weight: bold; transition: 0.2s; border: none; }
+        .mode-btn.active { background: #000; color: #fff; }
+
+        .btn-main { background: #000; color: #fff; border: none; padding: 20px; font-size: 13px; font-weight: bold; cursor: pointer; letter-spacing: 2px; text-decoration: none; text-align: center; margin-top: 20px; transition: background 0.3s; }
+        .btn-main:hover { background: #333; }
+
+        .preview-area { flex: 1; display: flex; align-items: center; justify-content: center; background: #f9f9f9; background-image: radial-gradient(#ddd 1px, transparent 1px); background-size: 24px 24px; position: relative; }
+        canvas { max-width: 85%; max-height: 85%; box-shadow: 0 0 30px rgba(0,0,0,0.05); background: transparent; }
+
+        .font-preload { position: absolute; opacity: 0; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+<div class="font-preload">
+    <span style="font-family: 'CooperBlack';">.</span>
+    <span style="font-family: 'AmericanTypewriter';">.</span>
+</div>
+
+<div class="sidebar">
+    <h1>UNIT EDITOR</h1>
+    
+    <div class="control-group">
+        <label>TYPOGRAPHY</label>
+        <select id="fontSelect">
+            <option value="CooperBlack">COOPER BLACK</option>
+            <option value="AmericanTypewriter">AMERICAN TYPEWRITER</option>
+        </select>
+    </div>
+
+    <div class="control-group">
+        <label>TEXT CONTENT</label>
+        <input type="text" id="textInput" value="ME" maxlength="15" spellcheck="false">
+    </div>
+
+    <div class="control-group">
+        <label>TEXT COLOR</label>
+        <div class="mode-toggle">
+            <button class="mode-btn active" data-color="black">BLACK</button>
+            <button class="mode-btn" data-color="white">WHITE</button>
+        </div>
+    </div>
+
+    <div class="control-group">
+        <label>HEART COLOR</label>
+        <input type="color" id="heartColor" value="#ff0000" style="height: 40px; border: 1px solid #000; padding: 2px; width: 100%;">
+    </div>
+
+    <div class="control-group">
+        <label>H-GAP (I & ♥)</label>
+        <input type="range" id="hGap" min="-30" max="150" value="30">
+    </div>
+
+    <div class="control-group">
+        <label>V-GAP (LINES)</label>
+        <input type="range" id="vGap" min="-10" max="150" value="40">
+    </div>
+
+    <div class="control-group">
+        <label>BOTTOM TEXT WIDTH (%)</label>
+        <input type="range" id="widthScale" min="100" max="130" value="100">
+    </div>
+
+    <a href="tile.html" class="btn-main" id="processBtn">PROCEED TO TILING →</a>
+</div>
+
+<div class="preview-area">
+    <canvas id="mainCanvas" width="1000" height="1000"></canvas>
+</div>
+
+<script>
+    const canvas = document.getElementById('mainCanvas');
+    const ctx = canvas.getContext('2d');
+    const heartImg = new Image();
+    heartImg.src = 'heart.png';
+    
+    let textColor = 'black';
+    let isImgLoaded = false;
+
+    heartImg.onload = () => { isImgLoaded = true; draw(); };
+
+    ['textInput', 'hGap', 'vGap', 'fontSelect', 'heartColor', 'widthScale'].forEach(id => {
+        document.getElementById(id).addEventListener('input', draw);
+    });
+
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            textColor = btn.dataset.color;
+            draw();
+        });
+    });
+
+    async function init() {
+        await document.fonts.load('10pt "CooperBlack"');
+        await document.fonts.load('10pt "AmericanTypewriter"');
+        await document.fonts.ready;
+        draw();
+    }
+    init();
+
+    function draw() {
+        const text = document.getElementById('textInput').value.toUpperCase() || " ";
+        const hGap = parseInt(document.getElementById('hGap').value);
+        const vGap = parseInt(document.getElementById('vGap').value);
+        const widthScale = parseInt(document.getElementById('widthScale').value) / 100;
+        const fontName = document.getElementById('fontSelect').value;
+        const heartColor = document.getElementById('heartColor').value;
+        const isAT = (fontName === 'AmericanTypewriter');
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = textColor;
+        ctx.textBaseline = 'top';
+
+        // 1. 缩小 I 的字号：如果是 AT 字体，字号从 330 降为 260
+        const iFontSize = isAT ? 260 : 300;
+        ctx.font = `${iFontSize}px ${fontName}`;
+        const iWidth = ctx.measureText('I').width;
+        
+        // 2. 视觉高度比例优化
+        const iVisualHeight = iFontSize * (isAT ? 0.65 : 0.72); 
+        const heartH = iVisualHeight;
+        const heartW = isImgLoaded ? (heartImg.width / heartImg.height) * heartH : heartH;
+
+        // 第一行总宽度
+        const topRowWidth = iWidth + hGap + heartW;
+        const startX = (canvas.width - topRowWidth) / 2;
+        const startY = 320;
+
+        // 绘制 'I'
+        ctx.textAlign = 'left';
+        ctx.fillText('I', startX, startY);
+
+        // 绘制心形
+        if (isImgLoaded) {
+            const offscreen = document.createElement('canvas');
+            offscreen.width = heartImg.width; 
+            offscreen.height = heartImg.height;
+            const oCtx = offscreen.getContext('2d');
+            oCtx.drawImage(heartImg, 0, 0);
+            oCtx.globalCompositeOperation = 'source-in';
+            oCtx.fillStyle = heartColor;
+            oCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+
+            // 垂直对齐偏移量（你可以微调这里）
+            const yOff = isAT ? 0.15 : 0.06; 
+            ctx.drawImage(offscreen, startX + iWidth + hGap, startY + (iVisualHeight * yOff), heartW, heartH);
+        }
+
+        // 3. 绘制下方文字
+        const bottomY = startY + iVisualHeight + vGap;
+        
+        // 目标宽度：基于第一行宽度 * 缩放比例 (1.0 ~ 1.3)
+        const targetWidth = topRowWidth * widthScale;
+        
+        ctx.font = `100px ${fontName}`;
+        const currentW = ctx.measureText(text).width;
+        
+        // 自动计算下方字体的字号
+        const targetSize = (targetWidth / (currentW || 1)) * 100;
+        ctx.font = `${targetSize}px ${fontName}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(text, canvas.width / 2, bottomY);
+        
+        try {
+            localStorage.setItem('savedUnit', canvas.toDataURL('image/png'));
+            localStorage.setItem('unitAspect', canvas.width / canvas.height);
+        } catch (e) {
+            console.error("LocalStorage sync error.");
+        }
+    }
+</script>
+</body>
+</html>
